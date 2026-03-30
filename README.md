@@ -1,21 +1,20 @@
 # Tiny Debugger
 
-A small, Linux debugger for **x86_64 ELF binaries**, built using `ptrace`.
+A small Linux debugger for **x86_64 ELF binaries**, built using `ptrace`.
 
-Tiny Debugger provides a minimal but functional debugging environment with breakpoints, stack inspection, register viewing, and memory examination.
+Tiny Debugger provides a minimal but functional debugging environment with breakpoints, stack inspection, register viewing, memory examination, and DWARF-annotated backtraces.
 
 ---
 
 ## Features
 
-### Current Features
-
 - Automatic breakpoint at `main()` (resolved using `nm`)
 - Software breakpoints via `INT3 (0xCC)`
-- Single-step execution
+- Single-step execution (`step`) — follows calls into functions
+- Step-over execution (`next`) — steps over calls without entering them
 - Continue execution
 - Register inspection (`RIP`, `RSP`, `RBP`)
-- Frame-pointer based backtrace
+- Frame-pointer based backtrace with DWARF annotations (function name, source file, line number)
 - Stack frame dump (`RSP → RBP`)
 - Arbitrary memory examination
 - Interactive command-line REPL
@@ -28,6 +27,7 @@ Tiny Debugger provides a minimal but functional debugging environment with break
 - Linux (x86_64)
 - GCC
 - `nm` (from binutils)
+- `libdw` (from elfutils): `sudo apt install libdw-dev`
 
 ---
 
@@ -38,11 +38,6 @@ Build the debugger and example test program:
 ```bash
 make
 ```
-
-This will:
-- Create the `obj/` directory
-- Build `tinydbg`
-- Build the example `test` program with required flags
 
 To clean build artifacts:
 
@@ -60,7 +55,7 @@ Debug the included example program:
 ./tinydbg ./test
 ```
 
-Or debug your own program (must be compiled correctly):
+Or debug your own program:
 
 ```bash
 gcc -g -O0 -fno-omit-frame-pointer -no-pie program.c -o program
@@ -69,10 +64,10 @@ gcc -g -O0 -fno-omit-frame-pointer -no-pie program.c -o program
 
 ### Required Compilation Flags
 
-- `-g` — include debug symbols  
-- `-O0` — disable optimizations  
-- `-fno-omit-frame-pointer` — required for backtraces  
-- `-no-pie` — PIE binaries are not currently supported  
+- `-g` — include debug symbols (required for DWARF annotations)
+- `-O0` — disable optimizations
+- `-fno-omit-frame-pointer` — required for backtrace unwinding
+- `-no-pie` — PIE binaries are not currently supported
 
 ---
 
@@ -80,10 +75,11 @@ gcc -g -O0 -fno-omit-frame-pointer -no-pie program.c -o program
 
 ```
 regs         - show RIP, RSP, RBP
-bt           - show backtrace (call stack)
+bt           - show backtrace with function names and source locations
 locals       - dump current stack frame
 x <addr> [n] - examine memory (n qwords, default 8, max 256)
-step         - execute one instruction
+step         - execute one instruction (steps into calls)
+next         - execute one instruction (steps over calls)
 cont         - continue execution
 quit         - kill program and exit
 ```
@@ -99,6 +95,7 @@ tinydbg/
   │   ├── memory.h
   │   ├── breakpoint.h
   │   ├── backtrace.h
+  │   ├── dwarf.h
   │   └── commands.h
   │
   ├── src/
@@ -106,10 +103,12 @@ tinydbg/
   │   ├── commands.c
   │   ├── memory.c
   │   ├── breakpoint.c
-  │   └── backtrace.c
+  │   ├── backtrace.c
+  │   └── dwarf.c
   │
   ├── obj/        (generated)
   ├── test.c
+  ├── test_multiple_functions.c
   ├── Makefile
   └── tinydbg     (generated)
 ```
@@ -121,8 +120,7 @@ tinydbg/
 - Linux only
 - x86_64 only
 - Non-PIE binaries only
-- Backtrace requires frame pointers
-- No symbol resolution in backtrace (addresses only)
-- No source-level debugging
+- Backtrace uses frame-pointer unwinding — unreliable at libc boundaries and mid-prologue (before `push rbp` / `mov rbp, rsp` complete)
+- DWARF annotations only cover the current binary; libc frames show raw addresses
+- No user-defined breakpoints
 - No multi-thread support
-
